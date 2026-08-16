@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import confetti from "canvas-confetti";
 import { Navbar } from "@/components/Navbar";
 import { Sidebar } from "@/components/Sidebar";
@@ -21,9 +21,10 @@ export default function Home() {
   // App settings & drawers
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [isMockMode, setIsMockMode] = useState(false); // Default to live backend
+  const [isMockMode, setIsMockMode] = useState(false);
   const [backendUrl, setBackendUrl] = useState("http://localhost:8000");
   const [history, setHistory] = useState<MarketReport[]>([]);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Load history from localStorage
   useEffect(() => {
@@ -68,17 +69,17 @@ export default function Home() {
       {
         stage: "planning",
         msg: "🔍 [Xác thực & Định tuyến] Đang đánh giá từ khóa & phạm vi kinh doanh...",
-        delay: 1500,
+        delay: 1200,
       },
       {
         stage: "scraping",
         msg: "📈 [Thu thập Dữ liệu Thị trường] Đang tổng hợp thông tin xu hướng & đối thủ...",
-        delay: 2000,
+        delay: 1500,
       },
       {
         stage: "synthesizing",
         msg: "📊 [Xây dựng Báo cáo Chiến lược] Đang trích xuất ngách, giá tối ưu & rủi ro...",
-        delay: 2000,
+        delay: 1500,
       },
     ];
 
@@ -100,10 +101,57 @@ export default function Home() {
     } catch (e) {}
   };
 
-  // Live Backend SSE Runner
+  // Live Backend SSE Runner with Direct Fallback
   const runLiveAnalysis = async (searchTopic: string) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
     const jobId = "job_" + Math.random().toString(36).substring(2, 9);
+    let isCompleted = false;
+
+    // Trigger backend POST immediately
+    fetch(`${backendUrl}/api/analyze/${jobId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic: searchTopic }),
+    }).catch((err) => {
+      console.warn("Backend trigger fetch error:", err);
+    });
+
     const eventSource = new EventSource(`${backendUrl}/api/stream/${jobId}`);
+    eventSourceRef.current = eventSource;
+
+    // Fallback safety timer: if SSE takes > 28s, call direct endpoint
+    const fallbackTimer = setTimeout(async () => {
+      if (!isCompleted) {
+        console.warn("SSE slow, attempting direct fetch...");
+        try {
+          const res = await fetch(`${backendUrl}/api/analyze-direct`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic: searchTopic }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.topic) {
+              isCompleted = true;
+              eventSource.close();
+              setReport(data);
+              saveReportToHistory(data);
+              setCurrentStage("completed");
+              setLoading(false);
+              confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("Direct fetch failed, falling back to simulator", e);
+        }
+        eventSource.close();
+        runMockSimulation(searchTopic);
+      }
+    }, 28000);
 
     eventSource.onmessage = (e) => {
       try {
@@ -111,17 +159,25 @@ export default function Home() {
         if (data.stage) setCurrentStage(data.stage);
         if (data.message) setCurrentMessage(data.message);
         if (data.report) {
+          isCompleted = true;
+          clearTimeout(fallbackTimer);
           setReport(data.report);
           saveReportToHistory(data.report);
         }
-        if (data.stage === "completed" || data.stage === "error") {
+        if (data.stage === "completed") {
+          isCompleted = true;
+          clearTimeout(fallbackTimer);
           eventSource.close();
           setLoading(false);
-          if (data.stage === "completed") {
-            try {
-              confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-            } catch (e) {}
-          }
+          try {
+            confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+          } catch (e) {}
+        } else if (data.stage === "error") {
+          isCompleted = true;
+          clearTimeout(fallbackTimer);
+          eventSource.close();
+          console.warn("Backend error received:", data.message);
+          runMockSimulation(searchTopic);
         }
       } catch (err) {
         console.error("SSE parse error", err);
@@ -129,23 +185,8 @@ export default function Home() {
     };
 
     eventSource.onerror = () => {
-      console.warn("SSE connection error, falling back to simulation...");
-      eventSource.close();
-      runMockSimulation(searchTopic);
+      console.warn("SSE error, will rely on direct timer or fallback...");
     };
-
-    // Trigger backend job
-    try {
-      await fetch(`${backendUrl}/api/analyze/${jobId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic: searchTopic }),
-      });
-    } catch (err) {
-      console.warn("Backend fetch error, running mock simulator...", err);
-      eventSource.close();
-      runMockSimulation(searchTopic);
-    }
   };
 
   const handleStartAnalysis = (targetTopic: string) => {
@@ -166,6 +207,9 @@ export default function Home() {
   };
 
   const handleNewAnalysis = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
     setReport(null);
     setLoading(false);
     setTopic("");
@@ -283,10 +327,10 @@ export default function Home() {
             </div>
             {[
               "kinh doanh kindle",
+              "thị trường sách giấy việt nam",
               "Thị trường mỹ phẩm thuần chay Việt Nam",
               "Nước ép trái cây tươi đóng chai ngách văn phòng",
               "Khóa học lập trình AI cho sinh viên ngành CNTT",
-              "Dịch vụ thiết kế website AI cho doanh nghiệp nhỏ",
             ].map((item) => (
               <button
                 key={item}

@@ -14,7 +14,7 @@ async def _safe_chat_completion(client: Any, preferred_model: str, messages: lis
     """
     Calls OpenCode Go API with automatic resilience fallback to qwen3.7-plus / minimax-m3 if preferred model fails.
     """
-    fallback_models = [preferred_model, "qwen3.7-plus", "qwen3.7-max", "minimax-m3", "gpt-5.6-luna"]
+    fallback_models = ["gpt-5.6-luna", "kimi-k2.5", "glm-5.1", preferred_model, "qwen3.6-plus"]
     # De-duplicate while preserving order
     seen = set()
     models_to_try = [m for m in fallback_models if not (m in seen or seen.add(m))]
