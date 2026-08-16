@@ -60,6 +60,8 @@ def get_async_openai_client() -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key=config["api_key"],
         base_url=config["base_url"],
+        timeout=25.0,
+        max_retries=2,
     )
 
 def setup_llama_index_llm():
