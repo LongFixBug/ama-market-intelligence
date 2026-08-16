@@ -1,8 +1,9 @@
+from __future__ import annotations
 import os
 import json
 import asyncio
 from datetime import datetime
-from typing import Callable, Any
+from typing import Callable, Any, Dict, List, Optional
 from ml.crawlers.tavily_search import search_and_scrape_sources
 from ml.graphrag.indexer import create_market_property_graph
 from ml.schemas.market_report import MarketReport
@@ -13,8 +14,8 @@ load_dotenv()
 
 async def execute_market_pipeline(
     topic: str,
-    event_emitter: Callable[[str, str, dict | None], Any],
-) -> dict:
+    event_emitter: Callable[[str, str, Optional[Dict[str, Any]]], Any],
+) -> Dict[str, Any]:
     """
     Executes the 7-Step Multi-Agent & GraphRAG workflow and streams state via callback.
     """
@@ -39,7 +40,7 @@ async def execute_market_pipeline(
         plan_prompt,
         generation_config={"response_mime_type": "application/json"},
     )
-    queries = json.loads(plan_resp.text)
+    queries: List[str] = json.loads(plan_resp.text)
 
     # 2. CRAWLER AGENT
     await event_emitter("scraping", f"🌐 [Crawler Agent] Đang cào dữ liệu từ các website và sàn TMĐT với {len(queries)} truy vấn...", None)
@@ -75,7 +76,7 @@ async def execute_market_pipeline(
     """
 
     final_resp = synthesizer_llm.generate_content(final_prompt)
-    final_report = json.loads(final_resp.text)
+    final_report: Dict[str, Any] = json.loads(final_resp.text)
 
     await event_emitter("completed", "✅ Đã hoàn tất báo cáo phân tích thị trường!", final_report)
     return final_report
