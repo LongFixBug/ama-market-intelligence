@@ -1,26 +1,20 @@
+from __future__ import annotations
 import os
 import chromadb
 from typing import List, Dict
 from llama_index.core import Document, PropertyGraphIndex, Settings
 from llama_index.core.indices.property_graph import SchemaLLMPathExtractor
 from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.llms.gemini import Gemini
-from llama_index.embeddings.gemini import GeminiEmbedding
+from ml.core.llm import setup_llama_index_llm, get_opencode_config
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def init_gemini_settings():
-    api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        Settings.llm = Gemini(model="models/gemini-2.0-flash", api_key=api_key)
-        Settings.embed_model = GeminiEmbedding(model_name="models/text-embedding-004", api_key=api_key)
-
 def create_market_property_graph(scraped_docs: List[Dict[str, str]]) -> PropertyGraphIndex:
     """
-    Constructs a Property Graph Index using LlamaIndex and ChromaDB Vector Store.
+    Constructs a Property Graph Index using LlamaIndex with OpenCode Go / DeepSeek and ChromaDB.
     """
-    init_gemini_settings()
+    setup_llama_index_llm()
 
     documents = [
         Document(text=f"Tiêu đề: {d['title']}\nNguồn: {d['url']}\nNội dung: {d['content']}")

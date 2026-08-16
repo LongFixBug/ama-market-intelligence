@@ -1,30 +1,30 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from ml.pipelines.market_analysis_pipeline import execute_market_pipeline
-from ml.schemas.market_report import MarketReport
 
 @pytest.mark.asyncio
-async def test_execute_market_pipeline_emits_ordered_events():
+async def test_execute_market_pipeline_deepseek_emits_ordered_events():
     """
-    Test that the 7-step pipeline triggers the event_emitter in the correct sequential order
-    and finishes with a valid MarketReport output.
+    Test that the 7-step DeepSeek pipeline triggers the event_emitter in the correct sequential order
+    and returns a valid JSON report.
     """
     emitted_stages = []
 
     async def mock_event_emitter(stage: str, message: str, report=None):
         emitted_stages.append(stage)
 
-    # Mock Google Generative AI to avoid consuming real API quota during unit tests
-    mock_plan_resp = MagicMock()
-    mock_plan_resp.text = '["Đối thủ chính", "Bảng giá", "Khách hàng mục tiêu", "Rủi ro"]'
+    # Mock OpenCode Go / DeepSeek Chat Completion Responses
+    mock_plan_choice = MagicMock()
+    mock_plan_choice.message.content = '["Đối thủ chính", "Bảng giá", "Khách hàng mục tiêu", "Rủi ro"]'
+    mock_plan_resp = MagicMock(choices=[mock_plan_choice])
 
-    mock_synth_resp = MagicMock()
-    mock_synth_resp.text = """
+    mock_synth_choice = MagicMock()
+    mock_synth_choice.message.content = """
     {
         "id": "rep-test-001",
         "topic": "Test Topic",
         "createdAt": "16/08/2026",
-        "executive_summary": "Tóm tắt kiểm thử",
+        "executive_summary": "Tóm tắt kiểm thử DeepSeek",
         "market_size_est": "1,000 Tỷ",
         "growth_rate": "15%",
         "target_audience": [{"title": "Người dùng", "desc": "Mô tả", "pain_points": ["Nỗi đau"]}],
@@ -38,17 +38,14 @@ async def test_execute_market_pipeline_emits_ordered_events():
         "graph_data": {"nodes": [], "links": []}
     }
     """
+    mock_synth_resp = MagicMock(choices=[mock_synth_choice])
 
-    with patch("os.getenv", return_value="fake_key_for_testing"), \
-         patch("google.generativeai.configure"), \
-         patch("google.generativeai.GenerativeModel") as mock_model_cls, \
+    mock_openai_client = MagicMock()
+    mock_openai_client.chat.completions.create = AsyncMock(side_effect=[mock_plan_resp, mock_synth_resp])
+
+    with patch("ml.pipelines.market_analysis_pipeline.get_async_openai_client", return_value=mock_openai_client), \
          patch("ml.pipelines.market_analysis_pipeline.search_and_scrape_sources", return_value=[{"title": "Doc 1", "url": "https://a.com", "content": "Nội dung"}]), \
          patch("ml.pipelines.market_analysis_pipeline.create_market_property_graph") as mock_graph_cls:
-
-        # Mock the model responses
-        mock_instance = MagicMock()
-        mock_instance.generate_content.side_effect = [mock_plan_resp, mock_synth_resp]
-        mock_model_cls.return_value = mock_instance
 
         # Mock query engine
         mock_query_engine = MagicMock()

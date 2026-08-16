@@ -91,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="grid grid-cols-2 gap-1.5 text-[10px] text-slate-400">
             <span className="flex items-center space-x-1 bg-slate-900 px-2 py-1 rounded border border-slate-800">
               <Cpu className="w-3 h-3 text-indigo-400" />
-              <span>Gemini 2.0 Flash</span>
+              <span>DeepSeek (OpenCode)</span>
             </span>
             <span className="flex items-center space-x-1 bg-slate-900 px-2 py-1 rounded border border-slate-800">
               <Layers className="w-3 h-3 text-purple-400" />
