@@ -1,77 +1,45 @@
-export interface TargetAudience {
-  title: string;
-  desc: string;
-  pain_points: string[];
-}
-
-export interface MarketGap {
-  title: string;
-  opportunity: string;
-  priority: "Cao" | "Trung bình" | "Thấp";
-}
-
-export interface SWOT {
-  strengths: string[];
-  weaknesses: string[];
-  opportunities: string[];
-  threats: string[];
-}
-
-export interface CompetitorItem {
-  name: string;
-  type: "Trực tiếp" | "Gián tiếp";
-  positioning: string;
-  strengths: string[];
-  weaknesses: string[];
-  price_range: string;
-  market_share_est?: string;
-  website?: string;
-}
-
-export interface PricingTier {
-  tier: string;
-  price: number;
-  description: string;
-  features: string[];
+export interface NicheAnalysis {
+  summary: string;
+  growth_potential: string;
 }
 
 export interface PricingStrategy {
-  min_market_price: number;
-  median_market_price: number;
-  recommended_price: number;
-  premium_market_price: number;
-  unit: string;
-  pricing_logic: string;
-  margin_est: string;
-  tiers: PricingTier[];
+  price_range: string;
+  rationale: string;
+  tagline: string;
+  min_market_price?: number;
+  median_market_price?: number;
+  recommended_price?: number;
+  premium_market_price?: number;
+  unit?: string;
+  pricing_logic?: string;
+  margin_est?: string;
+  tiers?: Array<{
+    tier: string;
+    price: number;
+    description: string;
+    features: string[];
+  }>;
 }
 
 export interface RiskItem {
-  category: "Thị trường" | "Đối thủ" | "Vận hành" | "Pháp lý" | "Tài chính";
-  risk_title: string;
-  risk_level: "Cao" | "Trung bình" | "Thấp";
-  impact: string;
-  mitigation: string;
+  index: number;
+  title: string;
+  category?: string;
+  risk_title?: string;
+  risk_level?: string;
+  impact?: string;
+  mitigation?: string;
 }
 
-export interface SEOKeywordItem {
-  keyword: string;
-  intent: "Mua hàng (Commercial)" | "Tìm hiểu (Informational)" | "So sánh (Navigational)";
-  search_volume_est: "Rất cao" | "Cao" | "Trung bình" | "Ngách";
-  competition: "Cao" | "Trung bình" | "Thấp";
-  content_angle: string;
-}
-
-export interface GTMRoadmapPhase {
-  phase: string;
-  timeline: string;
-  key_actions: string[];
+export interface AIPromptItem {
+  prompt: string;
 }
 
 export interface GraphNode {
   id: string;
   name: string;
-  category: "competitor" | "product" | "segment" | "price" | "risk" | "keyword";
+  category: "product" | "competitor" | "feature" | "price" | "risk" | "audience" | "keyword";
   size?: number;
 }
 
@@ -90,26 +58,10 @@ export interface MarketReport {
   id: string;
   topic: string;
   createdAt: string;
-  executive_summary: string;
-  market_size_est: string;
-  growth_rate: string;
-  target_audience: TargetAudience[];
-  market_gaps: MarketGap[];
-  swot: SWOT;
-  competitors: CompetitorItem[];
+  niche_analysis: NicheAnalysis;
   pricing: PricingStrategy;
   risks: RiskItem[];
-  seo_strategy: SEOKeywordItem[];
-  gtm_roadmap: GTMRoadmapPhase[];
-  graph_data: KnowledgeGraphData;
-}
-
-export interface AgentStep {
-  id: string;
-  title: string;
-  agent: string;
-  status: "pending" | "running" | "completed" | "error";
-  message: string;
-  timestamp?: string;
-  logs?: string[];
+  seo_keywords: string[];
+  ai_prompts: AIPromptItem[];
+  graph_data?: KnowledgeGraphData;
 }

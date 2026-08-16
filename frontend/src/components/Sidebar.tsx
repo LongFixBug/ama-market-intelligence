@@ -76,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-500 mt-2">
                   <span>{item.createdAt}</span>
-                  <span className="text-indigo-400/80 font-mono">{item.pricing?.recommended_price ? `${item.pricing.recommended_price.toLocaleString()}đ` : ""}</span>
+                  <span className="text-indigo-400/80 font-mono font-medium">{item.pricing?.price_range || ""}</span>
                 </div>
               </div>
             ))

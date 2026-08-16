@@ -15,28 +15,33 @@ import { PricingStrategy } from "@/types/report";
 import { DollarSign, TrendingUp, CheckCircle2 } from "lucide-react";
 
 export const PriceChart: React.FC<{ pricing: PricingStrategy }> = ({ pricing }) => {
+  const minPrice = pricing.min_market_price ?? 0;
+  const medianPrice = pricing.median_market_price ?? 0;
+  const recPrice = pricing.recommended_price ?? 0;
+  const premiumPrice = pricing.premium_market_price ?? 0;
+
   const chartData = [
     {
       name: "Tối thiểu",
-      price: pricing.min_market_price,
+      price: minPrice,
       color: "#64748b",
       label: "Giá thấp nhất",
     },
     {
       name: "Trung vị",
-      price: pricing.median_market_price,
+      price: medianPrice,
       color: "#94a3b8",
       label: "Trung bình ngành",
     },
     {
       name: "Khuyến nghị",
-      price: pricing.recommended_price,
+      price: recPrice,
       color: "#6366f1",
       label: "Điểm ngọt (Sweet Spot)",
     },
     {
       name: "Cao cấp",
-      price: pricing.premium_market_price,
+      price: premiumPrice,
       color: "#f59e0b",
       label: "Phân khúc Premium",
     },
@@ -49,13 +54,13 @@ export const PriceChart: React.FC<{ pricing: PricingStrategy }> = ({ pricing }) 
         <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-2xl">
           <span className="text-[11px] text-slate-400 block">Thấp nhất thị trường</span>
           <p className="text-base sm:text-lg font-bold text-slate-200 mt-1">
-            {pricing.min_market_price.toLocaleString()} đ
+            {minPrice.toLocaleString()} đ
           </p>
         </div>
         <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-2xl">
           <span className="text-[11px] text-slate-400 block">Trung vị ngành</span>
           <p className="text-base sm:text-lg font-bold text-slate-200 mt-1">
-            {pricing.median_market_price.toLocaleString()} đ
+            {medianPrice.toLocaleString()} đ
           </p>
         </div>
         <div className="bg-indigo-950/40 border border-indigo-500/50 p-4 rounded-2xl ring-1 ring-indigo-500/30">
@@ -66,7 +71,7 @@ export const PriceChart: React.FC<{ pricing: PricingStrategy }> = ({ pricing }) 
             </span>
           </div>
           <p className="text-base sm:text-lg font-extrabold text-indigo-300 mt-1">
-            {pricing.recommended_price.toLocaleString()} đ
+            {recPrice.toLocaleString()} đ
           </p>
         </div>
         <div className="bg-slate-800/40 border border-slate-700/50 p-4 rounded-2xl">

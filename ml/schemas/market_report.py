@@ -1,95 +1,28 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Optional
 
-class TargetAudience(BaseModel):
-    title: str = Field(description="Tên nhóm khách hàng mục tiêu")
-    desc: str = Field(description="Mô tả hành vi, thu nhập, lối sống")
-    pain_points: List[str] = Field(description="Danh sách nỗi đau lớn nhất")
-
-class MarketGap(BaseModel):
-    title: str = Field(description="Tên khoảng trống thị trường")
-    opportunity: str = Field(description="Chi tiết cơ hội chưa được khai thác")
-    priority: str = Field(description="Ưu tiên: Cao / Trung bình / Thấp")
-
-class SWOT(BaseModel):
-    strengths: List[str] = Field(description="Điểm mạnh thị trường")
-    weaknesses: List[str] = Field(description="Điểm yếu thị trường")
-    opportunities: List[str] = Field(description="Cơ hội thị trường")
-    threats: List[str] = Field(description="Thách thức thị trường")
-
-class CompetitorItem(BaseModel):
-    name: str = Field(description="Tên đối thủ cạnh tranh")
-    type: str = Field(description="Loại đối thủ: Trực tiếp / Gián tiếp")
-    positioning: str = Field(description="Định vị thương hiệu")
-    strengths: List[str] = Field(description="Điểm mạnh")
-    weaknesses: List[str] = Field(description="Điểm yếu")
-    price_range: str = Field(description="Khoảng giá sản phẩm")
-    market_share_est: Optional[str] = Field(default=None, description="Ước tính thị phần")
-    website: Optional[str] = Field(default=None, description="Website chính thức nếu có")
-
-class PricingTier(BaseModel):
-    tier: str = Field(description="Tên gói sản phẩm (ví dụ: Starter, Pro, Enterprise)")
-    price: float = Field(description="Mức giá (VNĐ)")
-    description: str = Field(description="Mô tả đối tượng dùng")
-    features: List[str] = Field(description="Các tính năng / quyền lợi kèm theo")
+class NicheAnalysis(BaseModel):
+    summary: str = Field(description="Đánh giá tiềm năng, USP và cơ hội cạnh tranh trong ngách")
+    growth_potential: str = Field(default="Cao trong ngách mục tiêu", description="Tiềm năng tăng trưởng")
 
 class PricingStrategy(BaseModel):
-    min_market_price: float = Field(description="Giá thấp nhất thị trường")
-    median_market_price: float = Field(description="Giá trung vị thị trường")
-    recommended_price: float = Field(description="Mức giá đề xuất tối ưu (Sweet spot)")
-    premium_market_price: float = Field(description="Giá phân khúc cao cấp")
-    unit: str = Field(default="VNĐ / sản phẩm", description="Đơn vị tính giá")
-    pricing_logic: str = Field(description="Lý luận & cơ sở cho mức giá đề xuất")
-    margin_est: str = Field(default="60% - 70%", description="Ước tính biên lợi nhuận gộp")
-    tiers: List[PricingTier] = Field(default_factory=list, description="3 gói định giá phân tầng")
+    price_range: str = Field(description="Khoảng giá tối ưu (ví dụ: 2.500.000 VNĐ - 4.500.000 VNĐ)")
+    rationale: str = Field(description="Cơ sở & cơ chế định giá chi tiết")
+    tagline: str = Field(default="Tối ưu điểm hòa vốn & tỷ lệ chuyển đổi ban đầu", description="Luận điểm hòa vốn")
 
 class RiskItem(BaseModel):
-    category: str = Field(description="Danh mục: Thị trường / Đối thủ / Vận hành / Pháp lý / Tài chính")
-    risk_title: str = Field(description="Tên rủi ro")
-    risk_level: str = Field(description="Mức độ: Cao / Trung bình / Thấp")
-    impact: str = Field(description="Mức độ tác động cụ thể")
-    mitigation: str = Field(description="Biện pháp phòng ngừa & giảm thiểu")
+    index: int = Field(description="Số thứ tự rủi ro 1, 2, 3")
+    title: str = Field(description="Mô tả rủi ro và thách thức kinh doanh cụ thể")
 
-class SEOKeywordItem(BaseModel):
-    keyword: str = Field(description="Từ khóa mục tiêu")
-    intent: str = Field(description="Ý định: Mua hàng (Commercial) / Tìm hiểu (Informational) / So sánh (Navigational)")
-    search_volume_est: str = Field(description="Volume ước tính: Rất cao / Cao / Trung bình / Ngách")
-    competition: str = Field(description="Độ cạnh tranh: Cao / Trung bình / Thấp")
-    content_angle: str = Field(description="Gợi ý góc tiếp cận bài viết marketing")
-
-class GTMRoadmapPhase(BaseModel):
-    phase: str = Field(description="Tên giai đoạn")
-    timeline: str = Field(description="Thời gian thực thi (ví dụ: Tháng 1 - 2)")
-    key_actions: List[str] = Field(description="Danh sách các hành động then chốt")
-
-class GraphNode(BaseModel):
-    id: str
-    name: str
-    category: str
-    size: Optional[int] = 16
-
-class GraphLink(BaseModel):
-    source: str
-    target: str
-    relationship: str
-
-class KnowledgeGraphData(BaseModel):
-    nodes: List[GraphNode] = Field(default_factory=list)
-    links: List[GraphLink] = Field(default_factory=list)
+class AIPromptItem(BaseModel):
+    prompt: str = Field(description="Câu lệnh AI thực chiến (viết bài ads, so sánh đối thủ, kịch bản video TikTok)")
 
 class MarketReport(BaseModel):
     id: str
     topic: str
     createdAt: str
-    executive_summary: str
-    market_size_est: str
-    growth_rate: str
-    target_audience: List[TargetAudience]
-    market_gaps: List[MarketGap]
-    swot: SWOT
-    competitors: List[CompetitorItem]
+    niche_analysis: NicheAnalysis
     pricing: PricingStrategy
     risks: List[RiskItem]
-    seo_strategy: List[SEOKeywordItem]
-    gtm_roadmap: List[GTMRoadmapPhase]
-    graph_data: KnowledgeGraphData
+    seo_keywords: List[str]
+    ai_prompts: List[AIPromptItem]

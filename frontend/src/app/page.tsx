@@ -9,31 +9,19 @@ import { AgentTimeline } from "@/components/AgentTimeline";
 import { ReportDashboard } from "@/components/ReportDashboard";
 import { MarketReport } from "@/types/report";
 import { MOCK_REPORTS, generateDynamicMockReport } from "@/data/mockReports";
-import {
-  Sparkles,
-  ArrowRight,
-  Search,
-  Lightbulb,
-  Zap,
-  TrendingUp,
-  ShieldCheck,
-  Globe2,
-  PieChart,
-  Bot,
-} from "lucide-react";
+import { Search, ArrowRight, Lightbulb, Sparkles, X } from "lucide-react";
 
 export default function Home() {
   const [topic, setTopic] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentStage, setCurrentStage] = useState("");
   const [currentMessage, setCurrentMessage] = useState("");
-  const [logs, setLogs] = useState<string[]>([]);
   const [report, setReport] = useState<MarketReport | null>(null);
 
   // App settings & drawers
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [isMockMode, setIsMockMode] = useState(true);
+  const [isMockMode, setIsMockMode] = useState(false); // Default to live backend
   const [backendUrl, setBackendUrl] = useState("http://localhost:8000");
   const [history, setHistory] = useState<MarketReport[]>([]);
 
@@ -44,7 +32,6 @@ export default function Home() {
       if (saved) {
         setHistory(JSON.parse(saved));
       } else {
-        // Pre-populate with mock samples
         setHistory(Object.values(MOCK_REPORTS));
       }
       const savedUrl = localStorage.getItem("ama_backend_url");
@@ -77,99 +64,39 @@ export default function Home() {
 
   // Mock Multi-Agent Simulator
   const runMockSimulation = async (searchTopic: string) => {
-    const mockSteps = [
+    const steps = [
       {
         stage: "planning",
-        msg: `[Planner Agent] Đang phân rã đề tài '${searchTopic}' thành 4 giả thuyết & 8 truy vấn tìm kiếm...`,
-        logs: [
-          "Xác định bài toán nghiên cứu thị trường mục tiêu...",
-          "Tạo bộ truy vấn SERP: competitor benchmark, pricing breakdown, market painpoints, risk factors.",
-          "Phân công nhiệm vụ cho Web Crawler Agent...",
-        ],
-        delay: 2000,
+        msg: "🔍 [Xác thực & Định tuyến] Đang đánh giá từ khóa & phạm vi kinh doanh...",
+        delay: 1500,
       },
       {
         stage: "scraping",
-        msg: "[Web Crawler] Đang cào dữ liệu từ 15+ website đối thủ, bài đánh giá & sàn TMĐT...",
-        logs: [
-          "Truy vấn Google Search API qua Tavily/Serper...",
-          "Cào dữ liệu chi tiết landing page đối thủ bằng Playwright...",
-          "Lọc bỏ HTML rác, làm sạch 18,500 từ văn bản nội dung...",
-        ],
-        delay: 2500,
-      },
-      {
-        stage: "graph_rag",
-        msg: "[Knowledge Graph Engine] Đang trích xuất thực thể (Entities) và liên kết đồ thị LlamaIndex...",
-        logs: [
-          "Bóc tách thực thể: Competitor, Product, PricePoint, TargetAudience, Risk.",
-          "Thiết lập mối quan hệ: COMPETES_WITH, PRICED_AT, TARGETS, HAS_RISK.",
-          "Đồng bộ Embeddings vào ChromaDB Vector Store...",
-        ],
-        delay: 2500,
-      },
-      {
-        stage: "competitor_analysis",
-        msg: "[Competitor Analyst] Đang bóc tách ma trận SWOT, khoảng trống thị trường (Gaps)...",
-        logs: [
-          "So sánh điểm mạnh & điểm yếu của các thương hiệu hàng đầu...",
-          "Phát hiện 3 khoảng trống thị trường lớn chưa có bên nào khai thác triệt để...",
-        ],
+        msg: "📈 [Thu thập Dữ liệu Thị trường] Đang tổng hợp thông tin xu hướng & đối thủ...",
         delay: 2000,
-      },
-      {
-        stage: "pricing_risk",
-        msg: "[Pricing & Risk Strategist] Đang mô phỏng độ co giãn giá & ma trận giảm thiểu rủi ro...",
-        logs: [
-          "Tính toán phân vị giá tối thiểu, trung vị và sweet spot...",
-          "Xây dựng 3 gói định giá phân tầng (3-Tier Pricing Model)...",
-          "Đánh giá rủi ro chuỗi cung ứng, pháp lý và chiến lược phòng thủ...",
-        ],
-        delay: 2000,
-      },
-      {
-        stage: "seo_gtm",
-        msg: "[SEO & GTM Specialist] Đang phân tích bộ từ khóa tìm kiếm thương mại & lộ trình GTM...",
-        logs: [
-          "Phân loại từ khóa theo Commercial Intent và Search Volume...",
-          "Gợi ý góc tiếp cận nội dung (Content Angles) cho chiến dịch ra mắt...",
-        ],
-        delay: 1800,
       },
       {
         stage: "synthesizing",
-        msg: "[Chief Editor] Đang tổng hợp báo cáo chiến lược doanh nghiệp hoàn chỉnh...",
-        logs: [
-          "Kiểm định tính nhất quán dữ liệu qua Schema Pydantic...",
-          "Định dạng bảng biểu, ma trận và biểu đồ thị trường...",
-        ],
-        delay: 1500,
+        msg: "📊 [Xây dựng Báo cáo Chiến lược] Đang trích xuất ngách, giá tối ưu & rủi ro...",
+        delay: 2000,
       },
     ];
 
-    for (const step of mockSteps) {
+    for (const step of steps) {
       setCurrentStage(step.stage);
       setCurrentMessage(step.msg);
-      for (const l of step.logs) {
-        setLogs((prev) => [...prev, l]);
-      }
       await new Promise((r) => setTimeout(r, step.delay));
     }
 
-    // Generate result
     const resultReport = generateDynamicMockReport(searchTopic);
     setReport(resultReport);
     saveReportToHistory(resultReport);
     setCurrentStage("completed");
-    setCurrentMessage("✅ Đã hoàn tất báo cáo thị trường!");
+    setCurrentMessage("✅ Đã hoàn tất báo cáo!");
     setLoading(false);
 
     try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 },
-      });
+      confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
     } catch (e) {}
   };
 
@@ -182,10 +109,7 @@ export default function Home() {
       try {
         const data = JSON.parse(e.data);
         if (data.stage) setCurrentStage(data.stage);
-        if (data.message) {
-          setCurrentMessage(data.message);
-          setLogs((prev) => [...prev, data.message]);
-        }
+        if (data.message) setCurrentMessage(data.message);
         if (data.report) {
           setReport(data.report);
           saveReportToHistory(data.report);
@@ -195,7 +119,7 @@ export default function Home() {
           setLoading(false);
           if (data.stage === "completed") {
             try {
-              confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
+              confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
             } catch (e) {}
           }
         }
@@ -205,10 +129,7 @@ export default function Home() {
     };
 
     eventSource.onerror = () => {
-      setLogs((prev) => [
-        ...prev,
-        "⚠️ Không thể kết nối tới Backend SSE. Chuyển hướng sang chế độ Mock Simulation...",
-      ]);
+      console.warn("SSE connection error, falling back to simulation...");
       eventSource.close();
       runMockSimulation(searchTopic);
     };
@@ -221,7 +142,7 @@ export default function Home() {
         body: JSON.stringify({ topic: searchTopic }),
       });
     } catch (err) {
-      console.warn("Backend not available, fallback to mock", err);
+      console.warn("Backend fetch error, running mock simulator...", err);
       eventSource.close();
       runMockSimulation(searchTopic);
     }
@@ -234,9 +155,8 @@ export default function Home() {
     setTopic(q);
     setLoading(true);
     setReport(null);
-    setLogs([]);
     setCurrentStage("planning");
-    setCurrentMessage("🚀 Đang khởi động hệ thống Multi-Agent...");
+    setCurrentMessage("🚀 Đang khởi động hệ thống phân tích...");
 
     if (isMockMode) {
       runMockSimulation(q);
@@ -252,9 +172,9 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 bg-grid-pattern relative selection:bg-indigo-500 selection:text-white flex flex-col">
+    <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 bg-grid-pattern relative selection:bg-indigo-500 selection:text-white flex flex-col transition-colors duration-200">
       {/* Top Ambient Glow Gradient */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-indigo-500/15 via-purple-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-96 bg-gradient-to-b from-indigo-500/10 via-indigo-500/5 to-transparent blur-3xl pointer-events-none -z-10" />
 
       {/* Navbar */}
       <Navbar
@@ -295,154 +215,162 @@ export default function Home() {
         }}
       />
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-        {/* Search Hero Section (Shown when no report or when creating new) */}
-        {!report && !loading && (
-          <section className="text-center space-y-5 pt-8 pb-4">
-            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold shadow-sm">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Nền Tảng Nghiên Cứu Thị Trường & Chiến Lược Kinh Doanh Tự Động</span>
-            </div>
+      {/* Main Content */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* Header Hero Section */}
+        <section className="text-center space-y-4 pt-4 pb-2">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 text-indigo-600 dark:text-indigo-400 text-xs font-semibold shadow-xs">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Nền Tảng Phân Tích & Nghiên Cứu Thị Trường Doanh Nghiệp</span>
+          </div>
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight max-w-4xl mx-auto leading-tight text-slate-100">
-              Nghiên Cứu Thị Trường &bull; Multi-Agent + GraphRAG
-            </h1>
+          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-3xl mx-auto leading-tight text-slate-900 dark:text-slate-100">
+            Nền Tảng Phân Tích Thị Trường & Xây Dựng Chiến Lược Kinh Doanh
+          </h2>
 
-            <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
-              Nhập bất kỳ sản phẩm hoặc ngách kinh doanh nào để nhận ngay bản báo cáo toàn diện:
-              Phân tích khoảng trống thị trường, Chiến lược định giá, Đánh giá rủi ro và Bộ từ khóa SEO.
-            </p>
-          </section>
-        )}
+          <p className="text-slate-600 dark:text-slate-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+            Nhập sản phẩm hoặc ngách kinh doanh để nhận báo cáo chiến lược toàn diện bao gồm: Thị trường ngách, Chiến lược giá tối ưu, Đánh giá rủi ro và Bộ từ khóa SEO.
+          </p>
+        </section>
 
         {/* Search Bar */}
-        {(!report || loading) && (
-          <section className="max-w-3xl mx-auto space-y-4">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleStartAnalysis(topic);
-              }}
-              className="relative group"
-            >
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 rounded-3xl blur opacity-30 group-hover:opacity-60 transition duration-300" />
-              <div className="relative flex items-center bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-2xl p-2 shadow-2xl transition-colors">
-                <div className="pl-4 pr-2 text-slate-500">
-                  <Search className="w-5 h-5 group-focus-within:text-indigo-400 transition-colors" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Nhập chủ đề hoặc thị trường muốn phân tích (ví dụ: Nước ép đóng chai, Khóa học AI...)"
-                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm sm:text-base px-2 py-2.5 focus:outline-none disabled:opacity-50 font-medium"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  disabled={loading}
-                />
+        <section className="max-w-4xl mx-auto space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleStartAnalysis(topic);
+            }}
+            className="relative group"
+          >
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-300" />
+            <div className="relative flex items-center bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border border-slate-200 dark:border-slate-800 rounded-2xl p-2 shadow-xl transition-colors">
+              <div className="pl-4 pr-2 text-slate-400">
+                <Search className="w-5 h-5 group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400 transition-colors" />
+              </div>
+              <input
+                type="text"
+                placeholder="Nhập chủ đề hoặc thị trường muốn phân tích (ví dụ: Nước ép đóng chai, Khóa học AI...)"
+                className="w-full bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-sm sm:text-base px-2 py-2 focus:outline-none disabled:opacity-50 font-medium"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                disabled={loading}
+              />
+              {topic && !loading && (
                 <button
-                  type="submit"
-                  disabled={loading || !topic.trim()}
-                  className="flex items-center space-x-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-600/30 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                  type="button"
+                  onClick={() => setTopic("")}
+                  className="p-1 text-slate-400 hover:text-slate-600 mr-2"
                 >
-                  <span>Phân tích</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <X className="w-4 h-4" />
                 </button>
-              </div>
-            </form>
-
-            {/* Quick Suggestions Chips */}
-            {!loading && (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <div className="flex items-center space-x-1 text-xs text-slate-500 font-medium mr-1">
-                  <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Gợi ý mẫu:</span>
-                </div>
-                {[
-                  "Thị trường mỹ phẩm thuần chay Việt Nam",
-                  "Nước ép trái cây tươi đóng chai ngách văn phòng",
-                  "Khóa học lập trình AI cho sinh viên ngành CNTT",
-                  "Dịch vụ thiết kế website AI cho doanh nghiệp nhỏ",
-                ].map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => handleStartAnalysis(item)}
-                    className="text-xs px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-indigo-300 transition-all cursor-pointer text-left shadow-xs"
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Feature Highlights Grid (When Idle) */}
-        {!report && !loading && (
-          <section className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6">
-            <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 space-y-3 hover:border-indigo-500/30 transition-all shadow-lg">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-extrabold text-sm">
-                01
-              </div>
-              <h4 className="text-sm font-bold text-slate-100">Phân tích Ngách & Đối thủ</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Tự động cào dữ liệu, xác định khoảng trống thị trường (Market Gaps) và bóc tách ma trận SWOT của các đối thủ dẫn đầu.
-              </p>
+              )}
+              <button
+                type="submit"
+                disabled={loading || !topic.trim()}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-semibold text-sm transition-all shadow-md shadow-indigo-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <span>Phân tích</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
+          </form>
 
-            <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 space-y-3 hover:border-indigo-500/30 transition-all shadow-lg">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 font-extrabold text-sm">
-                02
-              </div>
-              <h4 className="text-sm font-bold text-slate-100">Chiến lược Giá & Rủi ro</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Khám phá khoảng giá tối ưu (Sweet Spot) kèm cơ cấu đóng gói 3 gói sản phẩm và các biện pháp phòng ngừa rủi ro vận hành.
-              </p>
+          {/* Quick Suggestions Chips */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="flex items-center space-x-1 text-xs text-slate-500 dark:text-slate-400 font-medium mr-1">
+              <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+              <span>Gợi ý:</span>
             </div>
+            {[
+              "kinh doanh kindle",
+              "Thị trường mỹ phẩm thuần chay Việt Nam",
+              "Nước ép trái cây tươi đóng chai ngách văn phòng",
+              "Khóa học lập trình AI cho sinh viên ngành CNTT",
+              "Dịch vụ thiết kế website AI cho doanh nghiệp nhỏ",
+            ].map((item) => (
+              <button
+                key={item}
+                onClick={() => handleStartAnalysis(item)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-900/80 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer text-left shadow-xs"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </section>
 
-            <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl p-6 space-y-3 hover:border-indigo-500/30 transition-all shadow-lg">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 font-extrabold text-sm">
-                03
-              </div>
-              <h4 className="text-sm font-bold text-slate-100">SEO & Đồ thị Tri thức</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Bóc tách bộ từ khóa có ý định mua hàng cao và trực quan hóa toàn bộ mối quan hệ mạng lưới qua GraphRAG.
-              </p>
-            </div>
-          </section>
-        )}
-
-        {/* Live Execution Multi-Agent Stepper */}
+        {/* 3 Step Stepper */}
         {loading && (
           <AgentTimeline
             currentStage={currentStage}
             currentMessage={currentMessage}
-            logs={logs}
           />
         )}
 
-        {/* Completed Report Dashboard */}
+        {/* 3 Feature Preview Cards (When Idle) */}
+        {!report && !loading && (
+          <section className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+            <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 space-y-2 hover:border-indigo-300 dark:hover:border-slate-700 transition-all shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                01
+              </div>
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Phân tích Ngách & Thị trường
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Xác định khoảng trống thị trường, cơ hội cạnh tranh và mô tả chi tiết tệp khách hàng mục tiêu.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 space-y-2 hover:border-indigo-300 dark:hover:border-slate-700 transition-all shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 flex items-center justify-center text-orange-600 dark:text-orange-400 font-bold text-sm">
+                02
+              </div>
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Định giá & Hạn chế Rủi ro
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Đề xuất khoảng giá kinh doanh tối ưu kèm đánh giá các rủi ro vận hành, tài chính & đối thủ.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 space-y-2 hover:border-indigo-300 dark:hover:border-slate-700 transition-all shadow-xs">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                03
+              </div>
+              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Tối ưu hóa Thương mại & SEO
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Cung cấp bộ từ khóa tìm kiếm hàng đầu và gợi ý câu lệnh AI marketing hiệu quả cao.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* Master Report Dashboard */}
         {report && !loading && (
-          <div className="space-y-6">
+          <section className="space-y-6">
             <ReportDashboard report={report} />
-          </div>
+          </section>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="w-full border-t border-slate-800/80 bg-slate-950 py-6 mt-16 transition-colors">
+      <footer className="w-full border-t border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950/80 py-6 mt-12 transition-colors">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <p>© 2026 AMA Market Intelligence Platform &bull; Multi-Agent + GraphRAG System</p>
+          <p>© 2026 AMA Market Intelligence Platform &bull; Multi-Agent System</p>
           <div className="flex items-center space-x-4">
-            <span className="hover:text-slate-400 transition-colors cursor-pointer">
-              Báo cáo Doanh nghiệp
+            <span className="hover:text-slate-700 dark:hover:text-slate-400 cursor-pointer">
+              Báo cáo Phân tích Kinh doanh
             </span>
             <span>&bull;</span>
-            <span className="hover:text-slate-400 transition-colors cursor-pointer">
-              LlamaIndex + ChromaDB
+            <span className="hover:text-slate-700 dark:hover:text-slate-400 cursor-pointer">
+              Bảo mật Enterprise
             </span>
             <span>&bull;</span>
-            <span className="hover:text-slate-400 transition-colors cursor-pointer">
-              Gemini 2.0 Flash
+            <span className="hover:text-slate-700 dark:hover:text-slate-400 cursor-pointer">
+              Dữ liệu Thời gian thực
             </span>
           </div>
         </div>

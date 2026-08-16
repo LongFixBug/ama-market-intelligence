@@ -8,11 +8,18 @@ from llama_index.llms.openai import OpenAI as LlamaOpenAI
 from llama_index.core import Settings
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from backend/.env or root .env
+current_dir = os.path.dirname(os.path.abspath(__file__))
+backend_env = os.path.abspath(os.path.join(current_dir, "../../backend/.env"))
+if os.path.exists(backend_env):
+    load_dotenv(backend_env)
+else:
+    load_dotenv()
 
 def get_opencode_config() -> Dict[str, str]:
     """
     Retrieves API Key, Base URL, and Model configuration for OpenCode Go / DeepSeek.
+    Auto-cleans base_url if /chat/completions was appended.
     """
     api_key = (
         os.getenv("OPENCODE_API_KEY")
@@ -20,15 +27,20 @@ def get_opencode_config() -> Dict[str, str]:
         or os.getenv("DEEPSEEK_API_KEY")
         or ""
     )
-    base_url = (
+    raw_base_url = (
         os.getenv("OPENCODE_BASE_URL")
         or os.getenv("OPENAI_BASE_URL")
-        or "https://api.deepseek.com/v1"
+        or "https://opencode.ai/zen/go/v1"
     )
+    # Strip any trailing slashes or /chat/completions accidentally appended
+    base_url = raw_base_url.rstrip("/")
+    if base_url.endswith("/chat/completions"):
+        base_url = base_url[:-len("/chat/completions")].rstrip("/")
+
     model = (
         os.getenv("OPENCODE_MODEL")
         or os.getenv("LLM_MODEL")
-        or "deepseek-chat"
+        or "deepseek-v4-flash"
     )
     return {
         "api_key": api_key,
