@@ -1,0 +1,12 @@
+{
+  "venvPath": ".",
+  "venv": "venv",
+  "extraPaths": [
+    ".",
+    "backend",
+    "ml",
+    "venv/lib/python3.14/site-packages"
+  ],
+  "reportMissingImports": "none",
+  "typeCheckingMode": "basic"
+}
