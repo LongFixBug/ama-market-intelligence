@@ -1,18 +1,25 @@
 import os
+import sys
 import json
 import asyncio
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+# Ensure root workspace is in sys.path so backend can import ml module
+current_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.abspath(os.path.join(current_dir, "../../"))
+if root_dir not in sys.path:
+    sys.path.insert(0, root_dir)
+
 load_dotenv()
 
 app = FastAPI(
-    title="AMA Market Intelligence API",
-    description="Multi-Agent & GraphRAG Automated Market Analysis Backend",
-    version="1.0.0"
+    title="AMA Market Intelligence API Gateway",
+    description="Backend API Gateway for Multi-Agent & GraphRAG Market Analysis",
+    version="1.0.0",
 )
 
 # CORS middleware for Next.js frontend
@@ -24,7 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Session tracking for SSE streams
+# In-memory session tracking for SSE streams (Use Redis in production)
 JOB_QUEUES: dict[str, asyncio.Queue] = {}
 
 class AnalyzeRequest(BaseModel):
@@ -32,12 +39,16 @@ class AnalyzeRequest(BaseModel):
 
 @app.get("/")
 def read_root():
-    return {"status": "ok", "message": "AMA Market Intelligence Backend is Running 🚀"}
+    return {
+        "status": "online",
+        "service": "AMA Backend API Gateway",
+        "version": "1.0.0",
+    }
 
 @app.get("/api/stream/{job_id}")
 async def stream_agent_progress(job_id: str):
     """
-    SSE stream endpoint sending real-time agent execution milestones to the frontend
+    SSE stream endpoint: Pushes real-time agent execution milestones to the frontend client
     """
     queue = asyncio.Queue()
     JOB_QUEUES[job_id] = queue
@@ -48,7 +59,7 @@ async def stream_agent_progress(job_id: str):
                 data = await queue.get()
                 yield {
                     "event": "message",
-                    "data": json.dumps(data, ensure_ascii=False)
+                    "data": json.dumps(data, ensure_ascii=False),
                 }
                 if data.get("stage") == "completed" or data.get("stage") == "error":
                     break
@@ -60,11 +71,11 @@ async def stream_agent_progress(job_id: str):
 @app.post("/api/analyze/{job_id}")
 async def trigger_analysis(job_id: str, req: AnalyzeRequest, bg_tasks: BackgroundTasks):
     """
-    Triggers the Multi-Agent & GraphRAG pipeline in the background
+    Triggers the Machine Learning Multi-Agent pipeline in a background thread
     """
     async def task_runner():
         queue = JOB_QUEUES.get(job_id)
-        
+
         async def event_callback(stage: str, message: str, report: dict = None):
             if queue:
                 payload = {"stage": stage, "message": message}
@@ -73,9 +84,8 @@ async def trigger_analysis(job_id: str, req: AnalyzeRequest, bg_tasks: Backgroun
                 await queue.put(payload)
 
         try:
-            # Import your agent pipeline here:
-            from app.agents.market_crew import run_market_pipeline
-            await run_market_pipeline(req.topic, event_callback)
+            from ml.pipelines.market_analysis_pipeline import execute_market_pipeline
+            await execute_market_pipeline(req.topic, event_callback)
         except Exception as e:
             if queue:
                 await queue.put({"stage": "error", "message": f"Pipeline error: {str(e)}"})

@@ -4,43 +4,69 @@
 
 ---
 
-## 🏗️ Cấu trúc Hệ thống
+## 🏛️ Kiến Trúc Hệ Thống (3 Tầng Độc Lập: FE &bull; BE &bull; ML)
 
-- **Frontend (`/frontend`)**: Next.js 14/15, TypeScript, TailwindCSS, Recharts, Lucide Icons, Canvas Confetti.
-  - Hỗ trợ cả **Live SSE Stream** từ Backend lẫn chế độ **Demo / Mock Simulation** độc lập để test UI ngay lập tức.
-  - Đầy đủ 7 Tab: Tổng quan & Persona, Đối thủ & SWOT, Định giá (Recharts), Rủi ro, Từ khóa SEO, Đồ thị Tri thức (GraphRAG SVG Viewer), Lộ trình GTM.
-  - Xuất báo cáo Markdown, JSON, In/PDF, Quản lý lịch sử phiên (LocalStorage).
-- **Backend (`/backend`)**: FastAPI, LlamaIndex Property Graph, ChromaDB, Gemini 2.0 Flash API, Tavily Search, Playwright.
+Dự án được phân chia độc lập thành 3 module rõ ràng:
+
+```text
+agentic-ai/
+├── frontend/             # 1. FRONTEND (FE) - Next.js 15+ App Router, TailwindCSS, Recharts
+│   ├── src/
+│   │   ├── app/          # Giao diện chính & Metadata
+│   │   ├── components/   # Multi-tab Dashboard, Timeline SSE Stepper, Graph Viewer
+│   │   ├── data/         # Mock datasets & Generator
+│   │   └── types/        # TypeScript interfaces khớp 100% với ML Schemas
+│   └── package.json
+│
+├── backend/              # 2. BACKEND GATEWAY (BE) - FastAPI, SSE Stream, Session Management
+│   ├── app/
+│   │   ├── main.py       # API Router & EventSource SSE Endpoint
+│   │   └── schemas.py    # Pydantic Data Contracts
+│   ├── requirements.txt
+│   └── .env.example
+│
+├── ml/                   # 3. MACHINE LEARNING & AI (ML) - Multi-Agent, GraphRAG, Crawlers
+│   ├── agents/           # 7 Autonomous Agents (Planner, Crawler, Analyst, etc.)
+│   ├── graphrag/         # LlamaIndex Property Graph, ChromaDB Embeddings, Triples
+│   ├── crawlers/         # Tavily Search API, Playwright Scraper, HTML Sanitizer
+│   ├── pipelines/        # End-to-End Orchestrator Pipeline
+│   ├── schemas/          # Pydantic Schemas & Graph Nodes
+│   └── requirements.txt
+│
+├── ARCHITECTURE.md       # Bản thiết kế kiến trúc toàn diện
+└── README.md
+```
 
 ---
 
 ## 🚀 Hướng dẫn Chạy Nhanh
 
-### 1. Khởi động Frontend (Chạy ngay lập tức)
+### 1. Khởi động Frontend (`/frontend`)
 
 ```bash
 cd frontend
 npm run dev
 ```
-
-Truy cập: [http://localhost:3000](http://localhost:3000)  
-*(Mặc định bật sẵn **Demo / Mock Mode** để bạn bấm phân tích các chủ đề mẫu và trải nghiệm toàn bộ UI/UX ngay lập tức!)*
+Truy cập: **[http://localhost:3000](http://localhost:3000)**  
+*(Có sẵn chế độ **Demo / Mock Simulation** độc lập để bạn bấm trải nghiệm toàn bộ UI/UX ngay lập tức).*
 
 ---
 
-### 2. Khởi động Backend (Khi bạn phát triển Backend & AI)
+### 2. Khởi động Backend & AI Service (`/backend` + `/ml`)
 
 ```bash
-cd backend
-python -m venv venv
+# 1. Tạo môi trường ảo Python
+python3 -m venv venv
 source venv/bin/activate  # Trên Windows: venv\Scripts\activate
-pip install -r requirements.txt
 
-# Cấu hình API Keys trong file backend/.env
-cp .env.example .env
+# 2. Cài đặt thư viện Backend & ML
+pip install -r backend/requirements.txt
+pip install -r ml/requirements.txt
+playwright install chromium
 
-# Chạy server FastAPI
-uvicorn app.main:app --reload --port 8000
+# 3. Cấu hình API Keys trong backend/.env
+cp backend/.env.example backend/.env
+
+# 4. Chạy FastAPI Server Gateway
+uvicorn backend.app.main:app --reload --port 8000
 ```
-
-Trong giao diện Frontend, bấm nút ⚙️ (Cài đặt) ở góc trên bên phải, tắt **Chế độ Demo / Mock Mode** để chuyển sang kết nối trực tiếp với FastAPI Backend qua Server-Sent Events (SSE).
