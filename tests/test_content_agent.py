@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ml.agents.content_agent import ContentCampaignAgent, verify_drafts
+from ml.agents.content_agent import ContentCampaignAgent, extract_claims, verify_drafts
 from ml.agents.content_models import ActionType, CampaignStatus, Platform
 from ml.schemas.market_report import (
     AIPromptItem,
@@ -32,12 +32,51 @@ def make_report() -> MarketReport:
         ai_prompts=[AIPromptItem(prompt="Viết bài so sánh Kindle và Kobo.")],
         sources=[
             SourceRef(
-                title="Bảng giá máy đọc sách",
+                title="Bảng giá Kindle Paperwhite",
                 url="https://example.com/kindle-prices",
-                snippet="Kindle Paperwhite được bán trong khoảng giá tham khảo.",
-            )
+                snippet="Kindle Paperwhite chính hãng có giá 2.500.000 VNĐ đến 4.500.000 VNĐ tùy phiên bản.",
+            ),
+            SourceRef(
+                title="Rủi ro máy đọc sách xách tay",
+                url="https://example.com/kindle-warranty",
+                snippet="Nguồn hàng xách tay có thể thiếu bảo hành chính hãng và hỗ trợ sau bán.",
+            ),
+            SourceRef(
+                title="Pin và trải nghiệm Kindle",
+                url="https://example.com/kindle-battery",
+                snippet="Người dùng máy đọc sách quan tâm pin lâu, cài đặt ban đầu và hỗ trợ sử dụng.",
+            ),
         ],
     )
+
+
+def test_claim_evidence_is_matched_per_claim():
+    claims = extract_claims(make_report())
+
+    price_claim = next(claim for claim in claims if "2.500.000" in claim.text)
+    risk_claim = next(claim for claim in claims if "xách tay" in claim.text)
+
+    assert price_claim.evidence
+    assert str(price_claim.evidence[0].url) == "https://example.com/kindle-prices"
+    assert all("warranty" not in str(source.url) for source in price_claim.evidence)
+    assert price_claim.confidence > 0.5
+
+    assert risk_claim.evidence
+    assert str(risk_claim.evidence[0].url) == "https://example.com/kindle-warranty"
+    assert risk_claim.confidence > 0.5
+
+
+def test_claim_without_matching_evidence_stays_low_confidence():
+    report = make_report().model_copy(
+        update={
+            "risks": [RiskItem(index=1, title="Biến động tỷ giá USD có thể làm tăng chi phí nhập khẩu.")]
+        }
+    )
+
+    risk_claim = next(claim for claim in extract_claims(report) if "tỷ giá" in claim.text)
+
+    assert risk_claim.evidence == []
+    assert risk_claim.confidence <= 0.2
 
 
 @pytest.mark.asyncio
