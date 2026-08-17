@@ -62,3 +62,4 @@ async def test_execute_market_pipeline_deepseek_emits_ordered_events():
         assert result["pricing"]["price_range"] == "2.500.000 VNĐ - 4.500.000 VNĐ"
         assert len(result["risks"]) == 3
         assert len(result["ai_prompts"]) == 1
+        assert result["sources"][0]["url"] == "https://a.com/"

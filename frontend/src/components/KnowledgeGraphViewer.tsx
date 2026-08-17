@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { KnowledgeGraphData, GraphNode } from "@/types/report";
-import { Network, Info, Zap } from "lucide-react";
+import { Network } from "lucide-react";
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   product: { bg: "#6366f1", border: "#818cf8", text: "#ffffff" },

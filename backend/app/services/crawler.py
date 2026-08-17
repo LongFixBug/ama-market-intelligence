@@ -1,11 +1,14 @@
 import os
 import asyncio
+import logging
 from typing import List, Dict
 from tavily import TavilyClient
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger("ama.legacy_crawler")
 
 def get_tavily_client():
     api_key = os.getenv("TAVILY_API_KEY")
@@ -52,7 +55,7 @@ async def search_and_scrape(queries: List[str]) -> List[Dict[str, str]]:
                             "title": res.get("title", ""),
                             "content": cleaned_text[:3500]
                         })
-        except Exception as err:
-            print(f"Error scraping query '{query}': {err}")
+        except Exception:
+            logger.warning("Legacy crawler query failed", extra={"query_length": len(query)}, exc_info=True)
 
     return all_docs

@@ -54,6 +54,13 @@ export interface KnowledgeGraphData {
   links: GraphLink[];
 }
 
+export interface SourceRef {
+  title: string;
+  url: string;
+  snippet?: string;
+  published_at?: string | null;
+}
+
 export interface MarketReport {
   id: string;
   topic: string;
@@ -63,5 +70,64 @@ export interface MarketReport {
   risks: RiskItem[];
   seo_keywords: string[];
   ai_prompts: AIPromptItem[];
+  sources?: SourceRef[];
   graph_data?: KnowledgeGraphData;
+}
+
+export type ContentPlatform = "blog" | "x" | "linkedin" | "facebook";
+
+export interface ContentDraft {
+  id: string;
+  platform: ContentPlatform;
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  body: string;
+  canonical_url?: string | null;
+  seo_keywords: string[];
+  hashtags: string[];
+  content_hash: string;
+  status: string;
+  provider_post_id?: string | null;
+  published_url?: string | null;
+  error_code?: string | null;
+}
+
+export interface ContentPublishResult {
+  platform: ContentPlatform;
+  success: boolean;
+  code: string;
+  provider_post_id?: string | null;
+  published_url?: string | null;
+  verified: boolean;
+  detail?: string | null;
+}
+
+export interface ContentCampaign {
+  id: string;
+  report_id: string;
+  topic: string;
+  platforms: ContentPlatform[];
+  status: string;
+  step: number;
+  claims: Array<{
+    text: string;
+    evidence: SourceRef[];
+    confidence: number;
+  }>;
+  drafts: ContentDraft[];
+  publish_results: ContentPublishResult[];
+  issues: string[];
+  actions: Array<{
+    action: string;
+    step: number;
+    message: string;
+    created_at: string;
+  }>;
+  revision_count: number;
+  approval_required: boolean;
+  approved_at?: string | null;
+  scheduled_at?: string | null;
+  created_at: string;
+  completed_at?: string | null;
 }

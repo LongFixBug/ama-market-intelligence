@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { BrainCircuit, Activity, Settings2, History, PlusCircle, Sparkles } from "lucide-react";
+import { BrainCircuit, Activity, Settings2, History, PlusCircle } from "lucide-react";
 
 interface NavbarProps {
   onNewAnalysis: () => void;

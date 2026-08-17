@@ -1,5 +1,7 @@
-# KIẾN TRÚC HỆ THỐNG TOÀN DIỆN: AMA-SYSTEM
-## (Automated Market Analysis System: Production-Grade Multi-Agent + GraphRAG)
+# KIẾN TRÚC MỤC TIÊU: AMA-SYSTEM
+## (Automated Market Analysis System: Target Multi-Agent + GraphRAG)
+
+> **Phân biệt thiết kế và code đang chạy:** tài liệu này mô tả target architecture. Active path hiện chạy Next.js → FastAPI → LLM planner/synthesis → Tavily → MarketReport → bounded content campaign agent. Campaign snapshots/event/idempotency/duplicate reservations hiện được lưu bền bằng SQLite WAL trên cùng host; local runtime có event replay/fan-out, cooperative lease, bounded concurrent publish, approval, schedule guard và fail-safe recovery. Lock/queue/rate limiter phân tán, pub/sub SSE giữa worker và auth tenant production vẫn chưa nối vào active path. GraphRAG vẫn chưa là dependency bắt buộc của active report path. Không dùng tài liệu này làm bằng chứng production readiness.
 
 ---
 
@@ -8,7 +10,7 @@
 ### 1.1. Mục tiêu cốt lõi (Core Mission)
 **AMA-System** là hệ thống tự động hóa nghiên cứu thị trường cấp doanh nghiệp (Enterprise-Grade Market Intelligence Platform), tích hợp kiến trúc **Multi-Agent** và **GraphRAG (Đồ thị tri thức kết hợp truy xuất tăng cường)** nhằm:
 - **Tối ưu hóa thời gian**: Rút ngắn toàn bộ chu kỳ nghiên cứu thị trường từ **~8 giờ thủ công xuống còn 2–3 phút tự động**.
-- **Độ tin cậy cao (Zero Hallucination)**: 100% dữ liệu về đối thủ, giá cả, từ khóa và xu hướng được trích xuất từ dữ liệu cào thực tế trên Internet thông qua đồ thị tri thức (Knowledge Graph Triples).
+- **Độ tin cậy cao**: mọi claim cần có nguồn/provenance; không coi prompt “zero hallucination” là cơ chế đảm bảo.
 - **Trải nghiệm thời gian thực (Real-time Transparency)**: Cung cấp luồng phát sự kiện trực tiếp (**Server-Sent Events - SSE**) cho phép người dùng quan sát từng suy nghĩ, thao tác cào web và trích xuất thực thể của các AI Agent theo từng giây.
 
 ---
@@ -260,9 +262,9 @@ sequenceDiagram
     participant Crew as Multi-Agent Orchestrator
     participant RAG as GraphRAG + Crawler
 
-    User->>API: 1. POST /api/analyze/{job_id} {"topic": "Mỹ phẩm thuần chay"}
-    API->>Queue: 2. Enqueue Job Task
-    API-->>User: 3. Return {"status": "started", "job_id": "job_123"}
+    User->>API: 1. POST /api/analyze {"topic": "Mỹ phẩm thuần chay"}
+    API->>Queue: 2. Enqueue bounded job task
+    API-->>User: 3. Return 202 {"status": "accepted", "job_id": "server_uuid"}
     User->>API: 4. GET /api/stream/job_123 (Open EventSource SSE)
     
     par Agent Execution
@@ -292,14 +294,14 @@ sequenceDiagram
 | Kịch Bản Sự Cố | Rủi Ro Kỹ Thuật | Phương Án Xử Lý Tự Động (Resilience Mechanism) |
 | :--- | :--- | :--- |
 | **Website chặn cào (Cloudflare / 403 Forbidden)** | Mất dữ liệu nguồn của đối thủ | Fallback tự động sang Google SERP Snippets và bộ nhớ đệm Tavily Raw Text; chuyển sang site vệ sinh khác. |
-| **LLM sinh lỗi định dạng JSON** | Lỗi render giao diện Frontend | Áp dụng **Pydantic Structured Output Enforcement** (`response_schema=MarketReport`), tự động retry tối đa 3 lần với temperature = 0.1. |
-| **Đứt kết nối mạng giữa chừng (SSE Disconnection)** | Client mất trạng thái tiến trình | Frontend có cơ chế tự động kết nối lại (`reconnect with backoff`) và đồng bộ kết quả cuối từ database `analysis_sessions`. |
+| **LLM sinh lỗi định dạng JSON** | Lỗi render giao diện Frontend | Active path validate bằng Pydantic trước khi emit `completed`; retry/fallback vẫn cần giới hạn cost và được cấu hình rõ. |
+| **Đứt kết nối mạng giữa chừng (SSE Disconnection)** | Client mất trạng thái tiến trình | Campaign event log được lưu bền trong SQLite và replay theo `Last-Event-ID`; analysis job SSE vẫn có queue TTL trong một process, còn live pub/sub liên worker cần Redis/PostgreSQL. |
 | **Trùng lặp thực thể đồ thị (Entity Resolution)** | Đồ thị bị phân mảnh (ví dụ: 'Cocoon' vs 'Cocoon VN') | Sử dụng thuật toán chuẩn hóa chuỗi và bước Entity Deduplication trong LlamaIndex Property Graph Extractor. |
 | **Vượt ngân sách Token & Chi phí API** | Chi phí cao, độ trễ lớn | Dùng **Gemini 2.0 Flash** cho toàn bộ tác vụ cào, lọc và trích xuất thực thể; chỉ dùng **Gemini 1.5 Pro** cho báo cáo tổng kết cuối cùng. |
 
 ---
 
-## 5. HẠ TẦNG TRIỂN KHAI PRODUCTION (DEPLOYMENT ARCHITECTURE)
+## 5. HẠ TẦNG TRIỂN KHAI PRODUCTION (TARGET, CHƯA TRIỂN KHAI)
 
 ```mermaid
 flowchart LR
@@ -327,7 +329,8 @@ flowchart LR
 
 ## 6. KẾT LUẬN & BƯỚC TIẾP THEO
 
-Kiến trúc trên đảm bảo:
+Kiến trúc mục tiêu cần đạt các điều kiện sau, nhưng code hiện tại chưa đáp ứng toàn bộ:
 1. **Độc lập hoàn toàn (Decoupled)** giữa Frontend và Backend.
-2. **Tính mở rộng (Scalability)**: Dễ dàng thêm Agent mới (ví dụ: Financial Modeling Agent, Ad Copy Agent).
-3. **Sẵn sàng cho Production (Production-Ready)** với đầy đủ Schema Validation, Error Fallback, Realtime SSE Streaming và Interactive Analytics UI.
+2. **Tính mở rộng (Scalability)**: API chỉ nhận job; worker riêng xử lý với Redis queue, concurrency limit và idempotency.
+3. **Bảo mật/tenant**: auth, ownership check, rate limit phân tán, audit log, secret manager và CORS allowlist.
+4. **Độ tin cậy**: report có provenance, schema validation, persisted status/result và replayable SSE.

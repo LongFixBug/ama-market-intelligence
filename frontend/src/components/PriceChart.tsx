@@ -10,9 +10,11 @@ import {
   ResponsiveContainer,
   Cell,
   CartesianGrid,
+  TooltipPayloadEntry,
+  TooltipValueType,
 } from "recharts";
 import { PricingStrategy } from "@/types/report";
-import { DollarSign, TrendingUp, CheckCircle2 } from "lucide-react";
+import { TrendingUp, CheckCircle2 } from "lucide-react";
 
 export const PriceChart: React.FC<{ pricing: PricingStrategy }> = ({ pricing }) => {
   const minPrice = pricing.min_market_price ?? 0;
@@ -105,10 +107,17 @@ export const PriceChart: React.FC<{ pricing: PricingStrategy }> = ({ pricing }) 
                 tickLine={false}
               />
               <Tooltip
-                formatter={(value: any, name: any, item: any) => [
-                  `${Number(value).toLocaleString()} đ`,
-                  item.payload.label,
-                ]}
+                formatter={(
+                  value: TooltipValueType | undefined,
+                  _name: string | number | undefined,
+                  item: TooltipPayloadEntry,
+                ) => {
+                  const payload = item.payload as { label?: string } | undefined;
+                  return [
+                    `${Number(value ?? 0).toLocaleString()} đ`,
+                    payload?.label ?? "Giá",
+                  ];
+                }}
                 contentStyle={{
                   backgroundColor: "#090d16",
                   borderColor: "#334155",

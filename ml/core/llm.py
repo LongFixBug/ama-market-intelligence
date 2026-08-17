@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import json
 import re
+from functools import lru_cache
 from typing import Dict, Any, Optional
 from openai import AsyncOpenAI
 from llama_index.llms.openai import OpenAI as LlamaOpenAI
@@ -48,9 +49,10 @@ def get_opencode_config() -> Dict[str, str]:
         "model": model,
     }
 
+@lru_cache(maxsize=1)
 def get_async_openai_client() -> AsyncOpenAI:
     """
-    Initializes AsyncOpenAI client configured for OpenCode Go / DeepSeek.
+    Initializes one reusable AsyncOpenAI client per worker for connection pooling.
     """
     config = get_opencode_config()
     if not config["api_key"]:
@@ -60,8 +62,10 @@ def get_async_openai_client() -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key=config["api_key"],
         base_url=config["base_url"],
-        timeout=30.0,
-        max_retries=1,
+        timeout=20.0,
+        # Retry policy is owned by the bounded model fallback loop so one
+        # request cannot silently multiply provider calls.
+        max_retries=0,
     )
 
 def setup_llama_index_llm():

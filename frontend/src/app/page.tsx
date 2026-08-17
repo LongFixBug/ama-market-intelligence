@@ -17,6 +17,7 @@ export default function Home() {
   const [currentStage, setCurrentStage] = useState("");
   const [currentMessage, setCurrentMessage] = useState("");
   const [report, setReport] = useState<MarketReport | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // App settings & drawers
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -26,23 +27,32 @@ export default function Home() {
   const [history, setHistory] = useState<MarketReport[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Load history from localStorage
+  // Load browser-only settings after mount so SSR and hydration stay deterministic.
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("ama_history");
-      if (saved) {
-        setHistory(JSON.parse(saved));
-      } else {
+    const loadBrowserState = () => {
+      try {
+        const saved = localStorage.getItem("ama_history");
+        if (saved) {
+          const parsed: unknown = JSON.parse(saved);
+          setHistory(Array.isArray(parsed) ? (parsed as MarketReport[]).slice(0, 20) : Object.values(MOCK_REPORTS));
+        } else {
+          setHistory(Object.values(MOCK_REPORTS));
+        }
+        const savedUrl = localStorage.getItem("ama_backend_url");
+        if (savedUrl) setBackendUrl(savedUrl);
+        const savedMock = localStorage.getItem("ama_mock_mode");
+        if (savedMock !== null) setIsMockMode(savedMock === "true");
+      } catch (error) {
+        console.error("Unable to load browser state", error);
         setHistory(Object.values(MOCK_REPORTS));
       }
-      const savedUrl = localStorage.getItem("ama_backend_url");
-      if (savedUrl) setBackendUrl(savedUrl);
-      const savedMock = localStorage.getItem("ama_mock_mode");
-      if (savedMock !== null) setIsMockMode(savedMock === "true");
-    } catch (e) {
-      console.error(e);
-    }
+    };
+
+    const timer = window.setTimeout(loadBrowserState, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => () => eventSourceRef.current?.close(), []);
 
   const saveReportToHistory = (newReport: MarketReport) => {
     const updated = [newReport, ...history.filter((h) => h.id !== newReport.id)].slice(0, 20);
@@ -98,95 +108,84 @@ export default function Home() {
 
     try {
       confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-    } catch (e) {}
+    } catch (error) {
+      console.error("Unable to show completion animation", error);
+    }
   };
 
-  // Live Backend SSE Runner with Direct Fallback
+  // Live Backend SSE Runner. The server owns the job id; never start a second
+  // direct request when the stream is slow because that doubles LLM cost.
   const runLiveAnalysis = async (searchTopic: string) => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
 
-    const jobId = "job_" + Math.random().toString(36).substring(2, 9);
     let isCompleted = false;
 
-    // Trigger backend POST immediately
-    fetch(`${backendUrl}/api/analyze/${jobId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: searchTopic }),
-    }).catch((err) => {
-      console.warn("Backend trigger fetch error:", err);
-    });
+    try {
+      const triggerResponse = await fetch(`${backendUrl}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ topic: searchTopic }),
+      });
+      if (!triggerResponse.ok) {
+        throw new Error(`Backend rejected the job (${triggerResponse.status})`);
+      }
 
-    const eventSource = new EventSource(`${backendUrl}/api/stream/${jobId}`);
-    eventSourceRef.current = eventSource;
+      const triggerData: { job_id?: string; stream_token?: string } = await triggerResponse.json();
+      if (!triggerData.job_id || !triggerData.stream_token) {
+        throw new Error("Backend did not return stream credentials");
+      }
 
-    // Fallback safety timer: if SSE takes > 28s, call direct endpoint
-    const fallbackTimer = setTimeout(async () => {
-      if (!isCompleted) {
-        console.warn("SSE slow, attempting direct fetch...");
+      const eventSource = new EventSource(
+        `${backendUrl}/api/stream/${triggerData.job_id}?token=${encodeURIComponent(triggerData.stream_token)}`,
+      );
+      eventSourceRef.current = eventSource;
+
+      eventSource.onmessage = (event) => {
         try {
-          const res = await fetch(`${backendUrl}/api/analyze-direct`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: searchTopic }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.topic) {
-              isCompleted = true;
-              eventSource.close();
-              setReport(data);
-              saveReportToHistory(data);
-              setCurrentStage("completed");
-              setLoading(false);
-              confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-              return;
-            }
+          const data = JSON.parse(event.data) as {
+            stage?: string;
+            message?: string;
+            report?: MarketReport;
+          };
+          if (data.stage) setCurrentStage(data.stage);
+          if (data.message) setCurrentMessage(data.message);
+          if (data.report) {
+            setReport(data.report);
+            saveReportToHistory(data.report);
           }
-        } catch (e) {
-          console.error("Direct fetch failed, falling back to simulator", e);
+          if (data.stage === "completed") {
+            isCompleted = true;
+            eventSource.close();
+            setLoading(false);
+            try {
+              confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+            } catch (error) {
+              console.error("Unable to show completion animation", error);
+            }
+          } else if (data.stage === "error") {
+            isCompleted = true;
+            eventSource.close();
+            setErrorMessage(data.message || "Phân tích thất bại. Vui lòng thử lại.");
+            setLoading(false);
+          }
+        } catch (error) {
+          console.error("SSE parse error", error);
         }
-        eventSource.close();
-        runMockSimulation(searchTopic);
-      }
-    }, 28000);
+      };
 
-    eventSource.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.stage) setCurrentStage(data.stage);
-        if (data.message) setCurrentMessage(data.message);
-        if (data.report) {
-          isCompleted = true;
-          clearTimeout(fallbackTimer);
-          setReport(data.report);
-          saveReportToHistory(data.report);
-        }
-        if (data.stage === "completed") {
-          isCompleted = true;
-          clearTimeout(fallbackTimer);
-          eventSource.close();
+      eventSource.onerror = () => {
+        if (!isCompleted && eventSource.readyState === EventSource.CLOSED) {
+          setErrorMessage("Mất kết nối tới Backend; vui lòng thử lại.");
           setLoading(false);
-          try {
-            confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-          } catch (e) {}
-        } else if (data.stage === "error") {
-          isCompleted = true;
-          clearTimeout(fallbackTimer);
-          eventSource.close();
-          console.warn("Backend error received:", data.message);
-          runMockSimulation(searchTopic);
         }
-      } catch (err) {
-        console.error("SSE parse error", err);
-      }
-    };
-
-    eventSource.onerror = () => {
-      console.warn("SSE error, will rely on direct timer or fallback...");
-    };
+      };
+    } catch (error) {
+      console.error("Unable to start analysis", error);
+      setErrorMessage("Không thể khởi động phân tích. Kiểm tra Backend URL hoặc thử lại.");
+      setLoading(false);
+    }
   };
 
   const handleStartAnalysis = (targetTopic: string) => {
@@ -196,6 +195,7 @@ export default function Home() {
     setTopic(q);
     setLoading(true);
     setReport(null);
+    setErrorMessage(null);
     setCurrentStage("planning");
     setCurrentMessage("🚀 Đang khởi động hệ thống phân tích...");
 
@@ -213,6 +213,7 @@ export default function Home() {
     setReport(null);
     setLoading(false);
     setTopic("");
+    setErrorMessage(null);
   };
 
   return (
@@ -351,6 +352,12 @@ export default function Home() {
           />
         )}
 
+        {errorMessage && (
+          <div role="alert" className="max-w-4xl mx-auto w-full rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {errorMessage}
+          </div>
+        )}
+
         {/* 3 Feature Preview Cards (When Idle) */}
         {!report && !loading && (
           <section className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
@@ -395,7 +402,7 @@ export default function Home() {
         {/* Master Report Dashboard */}
         {report && !loading && (
           <section className="space-y-6">
-            <ReportDashboard report={report} />
+            <ReportDashboard report={report} backendUrl={backendUrl} isMockMode={isMockMode} />
           </section>
         )}
       </main>

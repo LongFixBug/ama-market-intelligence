@@ -1,5 +1,69 @@
-from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+import re
+import unicodedata
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Literal, Optional
+
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator
+
+from ml.agents.content_models import Platform
+from ml.schemas.market_report import MarketReport
+
+
+class AnalyzeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    topic: str = Field(min_length=2, max_length=200)
+
+    @field_validator("topic", mode="before")
+    @classmethod
+    def normalize_topic(cls, value: object) -> str:
+        if not isinstance(value, str):
+            raise ValueError("topic must be a string")
+
+        normalized = unicodedata.normalize("NFC", " ".join(value.split()))
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", normalized):
+            raise ValueError("topic contains control characters")
+        return normalized
+
+
+class ContentCampaignRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report: MarketReport
+    platforms: list[Platform] = Field(
+        default_factory=lambda: [Platform.BLOG, Platform.X, Platform.LINKEDIN, Platform.FACEBOOK],
+        min_length=1,
+        max_length=4,
+    )
+    canonical_url: AnyHttpUrl | None = None
+    # A caller must not turn off the human gate through the public API. An
+    # explicitly authenticated internal automation path can be added later.
+    approval_required: Literal[True] = True
+    scheduled_at: datetime | None = None
+
+    @field_validator("platforms")
+    @classmethod
+    def unique_platforms(cls, value: list[Platform]) -> list[Platform]:
+        unique = list(dict.fromkeys(value))
+        if not unique:
+            raise ValueError("at least one platform is required")
+        return unique
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def normalize_schedule_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            normalized = value.replace(tzinfo=timezone.utc)
+        else:
+            normalized = value.astimezone(timezone.utc)
+        now = datetime.now(timezone.utc)
+        if normalized <= now:
+            raise ValueError("scheduled_at must be in the future")
+        if normalized > now + timedelta(days=31):
+            raise ValueError("scheduled_at cannot be more than 31 days ahead")
+        return normalized
 
 class TargetAudience(BaseModel):
     title: str = Field(description="Tên nhóm khách hàng mục tiêu")

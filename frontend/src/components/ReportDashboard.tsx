@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { MarketReport } from "@/types/report";
+import { ContentCampaignPanel } from "@/components/ContentCampaignPanel";
 import {
   BarChart3,
   Share2,
@@ -20,9 +21,11 @@ import {
 
 interface ReportDashboardProps {
   report: MarketReport;
+  backendUrl: string;
+  isMockMode: boolean;
 }
 
-export const ReportDashboard: React.FC<ReportDashboardProps> = ({ report }) => {
+export const ReportDashboard: React.FC<ReportDashboardProps> = ({ report, backendUrl, isMockMode }) => {
   const [copiedMd, setCopiedMd] = useState(false);
   const [copiedKeywords, setCopiedKeywords] = useState(false);
   const [copiedPromptIndex, setCopiedPromptIndex] = useState<number | null>(null);
@@ -113,6 +116,8 @@ ${report.ai_prompts.map((p, i) => `${i + 1}. ${p.prompt}`).join("\n")}
           </button>
         </div>
       </div>
+
+      <ContentCampaignPanel report={report} backendUrl={backendUrl} isMockMode={isMockMode} />
 
       {/* CARD 1: Phân Tích Ngách Thị Trường */}
       <div className="bg-white/90 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xs space-y-4">

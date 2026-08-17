@@ -30,9 +30,15 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch(`${url}/docs`, { method: "GET", mode: "no-cors" });
+      const parsedUrl = new URL(url.trim());
+      if (!(["http:", "https:"].includes(parsedUrl.protocol))) {
+        throw new Error("Unsupported backend protocol");
+      }
+      const res = await fetch(`${parsedUrl.origin}/`, { method: "GET", cache: "no-store" });
+      if (!res.ok) throw new Error(`Backend returned ${res.status}`);
       setTestResult("success");
-    } catch (e) {
+    } catch (error) {
+      console.error("Backend connection test failed", error);
       setTestResult("error");
     } finally {
       setTesting(false);
