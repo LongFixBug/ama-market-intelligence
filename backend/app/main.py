@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -9,6 +10,7 @@ import secrets
 import sys
 import uuid
 from contextlib import asynccontextmanager
+from time import time
 from typing import Any
 
 from dotenv import load_dotenv
@@ -21,6 +23,7 @@ from ml.agents.content_models import CampaignStatus
 
 from .rate_limit import InMemoryRateLimiter
 from .schemas import AnalyzeRequest, ContentCampaignRequest
+from .services.analysis_jobs import SQLiteAnalysisJobStore
 from .services.content_campaigns import ContentCampaignService
 
 # Ensure root workspace is in sys.path so the backend can import the ml package.
@@ -42,6 +45,8 @@ LOCAL_FRONTEND_ORIGINS = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 )
+
+_TERMINAL_JOB_STAGES = {"completed", "error"}
 
 
 def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -73,8 +78,9 @@ CONTENT_RATE_LIMIT_REQUESTS = _env_int("CONTENT_RATE_LIMIT", 30, 1, 1000)
 CONTENT_RATE_LIMIT_WINDOW_SECONDS = _env_int("CONTENT_RATE_WINDOW_SECONDS", 60, 1, 3600)
 JOB_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
-# This is intentionally bounded for a single development process. Production
-# must move jobs/events and the limiter to Redis/PostgreSQL.
+# Live queues remain process-local for low-latency SSE, while job auth/event
+# history is durable on the current host. Multi-host deployments still need
+# Redis/Postgres plus pub/sub/queue coordination.
 JOB_QUEUES: dict[str, asyncio.Queue[dict[str, Any]]] = {}
 JOB_TOKENS: dict[str, str] = {}
 JOB_RUNNING: set[str] = set()
@@ -85,13 +91,29 @@ CONTENT_RATE_LIMITER = InMemoryRateLimiter(
     CONTENT_RATE_LIMIT_REQUESTS,
     CONTENT_RATE_LIMIT_WINDOW_SECONDS,
 )
+ANALYSIS_JOBS = SQLiteAnalysisJobStore(
+    os.getenv(
+        "ANALYSIS_JOB_STORE_PATH",
+        os.path.join("backend", ".data", "analysis_jobs.sqlite3"),
+    )
+)
 CONTENT_CAMPAIGNS = ContentCampaignService()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Restore scheduled work after a process restart. Publishing that was
-    # already in-flight is converted to manual review by the service.
+    # Persisted analysis jobs cannot be resumed safely after an abrupt process
+    # restart, so convert them to a terminal error that the original client can
+    # replay with its existing stream token.
+    await ANALYSIS_JOBS.cleanup_expired(time() - JOB_TTL_SECONDS)
+    recovered = await ANALYSIS_JOBS.recover_interrupted(
+        "Tiến trình phân tích bị gián đoạn do backend khởi động lại; vui lòng chạy lại."
+    )
+    if recovered:
+        logger.warning("Recovered interrupted analysis jobs", extra={"count": recovered})
+
+    # Restore scheduled campaign work. Publishing already in-flight is handled
+    # conservatively by the campaign service.
     await CONTENT_CAMPAIGNS.recover()
     try:
         yield
@@ -146,6 +168,10 @@ def _campaign_bearer(authorization: str | None) -> str:
     return value.strip()
 
 
+def _job_token_digest(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 async def _enforce_rate_limit(
     request: Request,
     limiter: InMemoryRateLimiter = RATE_LIMITER,
@@ -160,21 +186,30 @@ async def _enforce_rate_limit(
         )
 
 
-async def _publish(queue: asyncio.Queue[dict[str, Any]], payload: dict[str, Any]) -> None:
+async def _publish(
+    job_id: str,
+    queue: asyncio.Queue[dict[str, Any]],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    # Persist before fan-out so reconnect/restart can replay every accepted
+    # event, including the terminal result.
+    event = await ANALYSIS_JOBS.append_event(job_id, payload)
     try:
-        queue.put_nowait(payload)
+        queue.put_nowait(event)
     except asyncio.QueueFull:
-        # Progress messages are disposable; preserve the terminal result.
-        if payload.get("stage") not in {"completed", "error"}:
-            return
+        # Progress messages are disposable from the live queue because the
+        # durable log is authoritative; preserve the terminal result if possible.
+        if event.get("stage") not in _TERMINAL_JOB_STAGES:
+            return event
         try:
             queue.get_nowait()
         except asyncio.QueueEmpty:
             pass
         try:
-            queue.put_nowait(payload)
+            queue.put_nowait(event)
         except asyncio.QueueFull:
             logger.error("Unable to publish terminal event because the job queue is full")
+    return event
 
 
 async def _expire_job(job_id: str) -> None:
@@ -183,6 +218,7 @@ async def _expire_job(job_id: str) -> None:
         JOB_QUEUES.pop(job_id, None)
         JOB_TOKENS.pop(job_id, None)
         JOB_RUNNING.discard(job_id)
+    await ANALYSIS_JOBS.delete(job_id)
 
 
 async def _run_job(job_id: str, topic: str, queue: asyncio.Queue[dict[str, Any]]) -> None:
@@ -190,34 +226,52 @@ async def _run_job(job_id: str, topic: str, queue: asyncio.Queue[dict[str, Any]]
         payload: dict[str, Any] = {"stage": stage, "message": message}
         if report is not None:
             payload["report"] = report
-        await _publish(queue, payload)
+        await _publish(job_id, queue, payload)
 
     try:
         async with ACTIVE_JOBS:
             from ml.pipelines.market_analysis_pipeline import execute_market_pipeline
 
-            await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 execute_market_pipeline(topic, event_callback),
                 timeout=ANALYSIS_TIMEOUT_SECONDS,
             )
+            snapshot = await ANALYSIS_JOBS.load(job_id)
+            if snapshot is not None and str(snapshot.get("status") or "") not in _TERMINAL_JOB_STAGES:
+                await _publish(
+                    job_id,
+                    queue,
+                    {
+                        "stage": "completed",
+                        "message": "✅ Đã hoàn tất báo cáo chiến lược!",
+                        "report": result,
+                    },
+                )
     except asyncio.TimeoutError:
         logger.warning("Analysis timed out", extra={"job_id": job_id})
         await _publish(
+            job_id,
             queue,
             {
                 "stage": "error",
                 "message": "Phân tích quá thời gian cho phép; vui lòng thử lại.",
+                "code": "analysis_timeout",
             },
         )
     except Exception:
         logger.exception("Analysis pipeline failed", extra={"job_id": job_id})
-        await _publish(
-            queue,
-            {
-                "stage": "error",
-                "message": "Dịch vụ phân tích tạm thời không khả dụng.",
-            },
-        )
+        try:
+            await _publish(
+                job_id,
+                queue,
+                {
+                    "stage": "error",
+                    "message": "Dịch vụ phân tích tạm thời không khả dụng.",
+                    "code": "analysis_failed",
+                },
+            )
+        except Exception:
+            logger.exception("Unable to persist terminal analysis error", extra={"job_id": job_id})
     finally:
         async with JOB_LOCK:
             JOB_RUNNING.discard(job_id)
@@ -239,6 +293,9 @@ async def _start_job(
     if not JOB_ID_PATTERN.fullmatch(job_id):
         raise HTTPException(status_code=422, detail={"code": "invalid_job_id"})
 
+    token = secrets.token_urlsafe(32)
+    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=JOB_QUEUE_SIZE)
+
     async with JOB_LOCK:
         if len(JOB_RUNNING) >= MAX_PENDING_JOBS:
             raise HTTPException(
@@ -246,21 +303,36 @@ async def _start_job(
                 detail={"code": "job_capacity_reached", "message": "Analysis queue is full"},
                 headers={"Retry-After": "30"},
             )
-        if job_id in JOB_QUEUES or job_id in JOB_RUNNING:
+        if (
+            job_id in JOB_QUEUES
+            or job_id in JOB_RUNNING
+            or await ANALYSIS_JOBS.exists(job_id)
+        ):
             raise HTTPException(
                 status_code=409,
                 detail={"code": "job_already_exists", "message": "Job already exists"},
             )
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=JOB_QUEUE_SIZE)
+
+        created = await ANALYSIS_JOBS.create(
+            job_id,
+            _job_token_digest(token),
+            req.topic,
+        )
+        if not created:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "job_already_exists", "message": "Job already exists"},
+            )
+
         JOB_QUEUES[job_id] = queue
-        JOB_TOKENS[job_id] = secrets.token_urlsafe(32)
+        JOB_TOKENS[job_id] = token
         JOB_RUNNING.add(job_id)
 
     background_tasks.add_task(_run_job, job_id, req.topic, queue)
     return {
         "status": "accepted",
         "job_id": job_id,
-        "stream_token": JOB_TOKENS[job_id],
+        "stream_token": token,
         "topic": req.topic,
     }
 
@@ -337,7 +409,12 @@ async def stream_content_campaign(
     if stream_token is None:
         raise HTTPException(status_code=403, detail={"code": "campaign_forbidden"})
     return EventSourceResponse(
-        CONTENT_CAMPAIGNS.stream(campaign_id, stream_token, request, last_event_id=last_event_id or 0),
+        CONTENT_CAMPAIGNS.stream(
+            campaign_id,
+            stream_token,
+            request,
+            last_event_id=last_event_id or 0,
+        ),
         headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no"},
     )
 
@@ -413,7 +490,12 @@ async def publish_content_campaign(
             status_code=409,
             detail={"code": "campaign_not_approved", "status": campaign.status.value},
         )
-    background_tasks.add_task(CONTENT_CAMPAIGNS.publish, campaign_id, token, idempotency_key)
+    background_tasks.add_task(
+        CONTENT_CAMPAIGNS.publish,
+        campaign_id,
+        token,
+        idempotency_key,
+    )
     return {"status": "accepted", "campaign_id": campaign_id}
 
 
@@ -433,38 +515,94 @@ async def cancel_content_campaign(
     return {"status": campaign.status.value, "campaign_id": campaign.id}
 
 
+def _job_event_to_sse(event: dict[str, Any]) -> dict[str, str]:
+    return {
+        "id": str(event["event_id"]),
+        "event": "message",
+        "data": json.dumps(event, ensure_ascii=False),
+    }
+
+
 @app.get("/api/stream/{job_id}")
 async def stream_agent_progress(
     job_id: str,
     request: Request,
     token: str | None = Query(default=None, min_length=20, max_length=256),
+    last_event_id: int | None = Header(default=None, alias="Last-Event-ID"),
 ):
     if not JOB_ID_PATTERN.fullmatch(job_id):
         raise HTTPException(status_code=422, detail={"code": "invalid_job_id"})
 
-    queue = JOB_QUEUES.get(job_id)
-    expected_token = JOB_TOKENS.get(job_id)
-    if queue is None or expected_token is None:
+    snapshot = await ANALYSIS_JOBS.load(job_id)
+    if snapshot is None:
         raise HTTPException(status_code=404, detail={"code": "job_not_found"})
-    if token is None or not secrets.compare_digest(token, expected_token):
+
+    if token is None or not secrets.compare_digest(
+        _job_token_digest(token),
+        str(snapshot.get("token_digest") or ""),
+    ):
         raise HTTPException(status_code=403, detail={"code": "stream_forbidden"})
 
+    queue = JOB_QUEUES.get(job_id)
+    starting_event_id = max(0, last_event_id or 0)
+
     async def event_generator():
+        last_seen = starting_event_id
+
+        # Initial durable replay.
+        current = await ANALYSIS_JOBS.load(job_id)
+        if current is None:
+            return
+        for event in current.get("events") or []:
+            event_id = int(event.get("event_id") or 0)
+            if event_id <= last_seen:
+                continue
+            last_seen = event_id
+            yield _job_event_to_sse(event)
+            if event.get("stage") in _TERMINAL_JOB_STAGES:
+                return
+
+        if str(current.get("status") or "") in _TERMINAL_JOB_STAGES:
+            return
+
         while True:
             if await request.is_disconnected():
                 return
-            try:
-                data = await asyncio.wait_for(queue.get(), timeout=15)
-            except asyncio.TimeoutError:
-                yield {"event": "ping", "data": "{}"}
-                continue
 
-            yield {
-                "event": "message",
-                "data": json.dumps(data, ensure_ascii=False),
-            }
-            if data.get("stage") in {"completed", "error"}:
+            live_queue = JOB_QUEUES.get(job_id) or queue
+            if live_queue is not None:
+                try:
+                    event = await asyncio.wait_for(live_queue.get(), timeout=5)
+                    event_id = int(event.get("event_id") or 0)
+                    if event_id > last_seen:
+                        last_seen = event_id
+                        yield _job_event_to_sse(event)
+                        if event.get("stage") in _TERMINAL_JOB_STAGES:
+                            return
+                    continue
+                except asyncio.TimeoutError:
+                    pass
+
+            # Poll the durable log so reconnects and requests that land after a
+            # restart can catch up even when no in-memory queue exists.
+            current = await ANALYSIS_JOBS.load(job_id)
+            if current is None:
                 return
+            emitted = False
+            for event in current.get("events") or []:
+                event_id = int(event.get("event_id") or 0)
+                if event_id <= last_seen:
+                    continue
+                emitted = True
+                last_seen = event_id
+                yield _job_event_to_sse(event)
+                if event.get("stage") in _TERMINAL_JOB_STAGES:
+                    return
+
+            if str(current.get("status") or "") in _TERMINAL_JOB_STAGES:
+                return
+            if not emitted:
+                yield {"event": "ping", "data": "{}"}
 
     return EventSourceResponse(
         event_generator(),
