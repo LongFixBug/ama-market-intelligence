@@ -33,11 +33,16 @@ _BANNED_LANGUAGE = (
 
 _PLATFORM_BODY_LIMITS = {
     Platform.X: 280,
-    # LinkedIn's text-only post body is intentionally kept below the API's
-    # practical limit so a generated variant does not fail at publish time.
     Platform.LINKEDIN: 3000,
 }
 _URL_PATTERN = re.compile(r"https?://\S+", flags=re.IGNORECASE)
+_TOKEN_PATTERN = re.compile(r"[\wÀ-ỹ]+", flags=re.UNICODE)
+_NUMBER_PATTERN = re.compile(r"\d[\d.,]*")
+_STOP_WORDS = {
+    "và", "của", "là", "có", "cho", "với", "trong", "một", "các", "được", "từ", "đến",
+    "the", "and", "for", "with", "from", "that", "this", "are", "was", "were", "into",
+    "tham", "khảo", "khoảng", "rủi", "ro", "thị", "trường",
+}
 
 
 def _hash_body(body: str) -> str:
@@ -58,7 +63,7 @@ def _x_weighted_length(text: str) -> int:
     cursor = 0
     for match in _URL_PATTERN.finditer(text):
         total += sum(2 if ord(char) > 0xFF else 1 for char in text[cursor : match.start()])
-        total += 23  # X wraps links to a fixed t.co length.
+        total += 23
         cursor = match.end()
     total += sum(2 if ord(char) > 0xFF else 1 for char in text[cursor:])
     return total
@@ -87,21 +92,76 @@ def _keyword_hashtags(keywords: list[str]) -> list[str]:
 
 
 def _slugify(value: str) -> str:
-    ascii_value = (
-        value.replace("đ", "d").replace("Đ", "D")
-    )
+    ascii_value = value.replace("đ", "d").replace("Đ", "D")
     ascii_value = unicodedata.normalize("NFKD", ascii_value).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^a-zA-Z0-9]+", "-", ascii_value.lower()).strip("-")
     return slug[:120] or "ama-market-content"
 
 
 def _source_refs(report: MarketReport) -> list[SourceRef]:
-    return [SourceRef.model_validate(source.model_dump(mode="json")) for source in report.sources[:5]]
+    return [SourceRef.model_validate(source.model_dump(mode="json")) for source in report.sources[:20]]
+
+
+def _normalized_tokens(text: str) -> set[str]:
+    return {
+        token.casefold()
+        for token in _TOKEN_PATTERN.findall(text)
+        if len(token) >= 3 and token.casefold() not in _STOP_WORDS
+    }
+
+
+def _normalized_numbers(text: str) -> set[str]:
+    numbers: set[str] = set()
+    for raw in _NUMBER_PATTERN.findall(text):
+        normalized = re.sub(r"\D", "", raw)
+        if len(normalized) >= 2:
+            numbers.add(normalized)
+    return numbers
+
+
+def _evidence_score(claim_text: str, source: SourceRef) -> float:
+    """Return a conservative lexical/numeric relevance score for claim evidence."""
+    claim_tokens = _normalized_tokens(claim_text)
+    source_text = f"{source.title} {source.snippet}"
+    source_tokens = _normalized_tokens(source_text)
+    token_overlap = claim_tokens & source_tokens
+
+    if not claim_tokens:
+        lexical_score = 0.0
+    else:
+        lexical_score = len(token_overlap) / min(max(len(claim_tokens), 1), 10)
+
+    claim_numbers = _normalized_numbers(claim_text)
+    source_numbers = _normalized_numbers(source_text)
+    numeric_overlap = claim_numbers & source_numbers
+    numeric_bonus = 0.0
+    if claim_numbers:
+        numeric_bonus = 0.45 * (len(numeric_overlap) / len(claim_numbers))
+
+    exact_phrase_bonus = 0.15 if len(claim_text) <= 120 and claim_text.casefold() in source_text.casefold() else 0.0
+    return min(1.0, lexical_score + numeric_bonus + exact_phrase_bonus)
+
+
+def _match_evidence(claim_text: str, sources: list[SourceRef]) -> tuple[list[SourceRef], float]:
+    scored = sorted(
+        ((_evidence_score(claim_text, source), source) for source in sources),
+        key=lambda item: item[0],
+        reverse=True,
+    )
+    matched = [(score, source) for score, source in scored if score >= 0.18][:3]
+    evidence = [source for _, source in matched]
+    if not matched:
+        return [], 0.15
+
+    best = matched[0][0]
+    support_bonus = min(0.15, 0.05 * (len(matched) - 1))
+    confidence = min(0.9, 0.35 + best * 0.5 + support_bonus)
+    return evidence, confidence
 
 
 def extract_claims(report: MarketReport) -> list[Claim]:
-    """Extract a small, auditable claim ledger from the validated market report."""
-    evidence = _source_refs(report)
+    """Extract claims and attach only sources that are actually relevant to each claim."""
+    sources = _source_refs(report)
     claim_texts = [
         report.niche_analysis.summary,
         f"Khoảng giá tham khảo: {report.pricing.price_range}",
@@ -109,13 +169,15 @@ def extract_claims(report: MarketReport) -> list[Claim]:
     ]
     claims: list[Claim] = []
     for text in claim_texts:
-        if not text.strip():
+        normalized = text.strip()
+        if not normalized:
             continue
+        evidence, confidence = _match_evidence(normalized, sources)
         claims.append(
             Claim(
-                text=text.strip(),
+                text=normalized,
                 evidence=evidence,
-                confidence=0.8 if evidence else 0.25,
+                confidence=confidence,
             )
         )
     return claims[:10]
@@ -194,7 +256,7 @@ class ContentCampaignAgent:
             if action is ActionType.EXTRACT_CLAIMS:
                 campaign.claims = extract_claims(report)
                 campaign.status = CampaignStatus.DRAFTING
-                await emit("planning", "Agent đã lập sổ claim và gắn bằng chứng nguồn.", None)
+                await emit("planning", "Agent đã lập sổ claim và gắn bằng chứng nguồn theo từng claim.", None)
             elif action is ActionType.DRAFT_VARIANTS:
                 campaign.status = CampaignStatus.DRAFTING
                 campaign.drafts = await self._draft_variants(
